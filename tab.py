@@ -3,7 +3,7 @@ import pyautogui
 import time
 
 # --- 配置区 ---
-TARGET_CODE = "w123"  
+TARGET_CODE = "123"  
 SWITCH_DELAY = 0.3    
 
 key_buffer = []
@@ -41,5 +41,6 @@ if __name__ == "__main__":
     # 强制管理员检测（PyInstaller --uac-admin 已处理，这里做双保险）
     keyboard.hook(handle_scan, suppress=True)
     # 增加一个小提示
-    pyautogui.alert("条码枪切换脚本已启动！\n指令码: w123\n退出请按 Esc")
+    pyautogui.alert("条码枪切换脚本已启动！\n指令码: 123\n退出请按 Esc")
     keyboard.wait('esc')
+
