@@ -2,3 +2,4 @@ keyboard
 pyperclip
 pyautogui
 pywin32
+hidapi
