@@ -1,61 +1,49 @@
-name: 打包快切助手 v16 (tab.py)
+name: 打包快切助手 v18.5 (修复权限与准星)
 
 on:
   push:
     tags:
-      - 'v*'  # 當推送到 v1.0 等標籤時自動打包發布
-  workflow_dispatch: # 支持手動點擊按鈕打包
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-      - name: 檢出代碼
+      - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 設置 Python 3.10
+      - name: 设置 Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          cache: 'pip'
 
-      - name: 安裝項目依賴
+      - name: 安装依赖
         run: |
           python -m pip install --upgrade pip
-          # 安裝 requirements.txt 中的庫
-          pip install -r requirements.txt
-          # 額外安裝打包必備工具
-          pip install pyinstaller pypiwin32
+          pip install keyboard pywin32 pyautogui pyinstaller
 
-      - name: 執行 PyWin32 初始化
+      - name: 执行 PyInstaller 打包
         run: |
-          # 解決 win32gui 找不到 DLL 的報錯
-          python [python -c "import os, sys; print(os.path.join(sys.prefix, 'Scripts', 'pywin32_postinstall.py'))"] -install
-        continue-on-error: true
-
-      - name: 使用 PyInstaller 打包
-        run: |
-          # --noconsole: 運行時隱藏黑窗口
-          # --onefile: 打包成單個 EXE
-          # --uac-admin: 核心！確保 F9 和攔截邏輯有系統最高權限
-          # --collect-all: 強制收集 win32 依賴，防止運行報錯
+          # --uac-admin: 关键！让生成的 EXE 自动请求管理员权限，否则无法获取高权限窗口句柄
+          # --collect-all: 确保 win32gui 等系统库完整打包
           pyinstaller --noconsole --onefile --uac-admin `
           --collect-all win32gui `
           --hidden-import="win32gui" `
           --hidden-import="win32con" `
-          --name "BarcodeSwitcher_v16" tab.py
+          --name "BarcodeSwitcher_Admin" tab.py
 
-      - name: 上傳打包產物 (Artifacts)
+      - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: BarcodeSwitcher-Release
-          path: dist/BarcodeSwitcher_v16.exe
+          name: BarcodeSwitcher-EXE
+          path: dist/BarcodeSwitcher_Admin.exe
 
-      - name: 發布到 GitHub Release
+      - name: 发布 Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/BarcodeSwitcher_v16.exe
+          files: dist/BarcodeSwitcher_Admin.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
