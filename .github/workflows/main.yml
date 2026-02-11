@@ -1,10 +1,10 @@
-name: 打包快切助手 EXE (tab.py)
+name: 打包快切助手 EXE (稳定版)
 
 on:
   push:
     tags:
-      - 'v*' # 当推送标签如 v1.0 时触发打包并发布 Release
-  workflow_dispatch: # 支持手动点击按钮打包
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -18,27 +18,38 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'pip' # 开启缓存加速后续打包
 
       - name: 安装项目依赖
         run: |
           python -m pip install --upgrade pip
-          pip install keyboard pywin32 pyperclip pyautogui pyinstaller
+          pip install -r requirements.txt
+          pip install pyinstaller pypiwin32  # 额外安装 pypiwin32 确保 DLL 注册
 
-      - name: 使用 PyInstaller 执行打包
+      - name: 修复 PyWin32 注册表 (解决 win32gui 报错关键)
         run: |
-          # --noconsole: 隐藏运行时的命令行窗口
-          # --onefile: 将所有依赖打包进一个 exe 文件
-          # --uac-admin: 必须添加！由于 keyboard 库拦截底层按键，EXE 必须以管理员身份运行
-          # --name: 指定生成的 EXE 文件名
-          pyinstaller --noconsole --onefile --uac-admin --name "BarcodeSwitcher_v8" tab.py
+          # 这一步能解决 Actions 环境下找不到 win32gui DLL 的顽疾
+          python [python -c "import os, sys; print(os.path.join(sys.prefix, 'Scripts', 'pywin32_postinstall.py'))"] -install
+        continue-on-error: true # 防止由于权限警告中断流程
 
-      - name: 上传构建结果 (Artifacts)
+      - name: 执行打包
+        run: |
+          # 使用 --collect-all 强制打包 win32 相关的所有资源
+          pyinstaller --noconsole --onefile --uac-admin `
+          --collect-all win32gui `
+          --collect-all win32api `
+          --hidden-import="win32gui" `
+          --hidden-import="win32con" `
+          --hidden-import="win32api" `
+          --name "BarcodeSwitcher_v8" tab.py
+
+      - name: 上传构建结果
         uses: actions/upload-artifact@v4
         with:
-          name: BarcodeSwitcher-Windows
+          name: BarcodeSwitcher-Release
           path: dist/BarcodeSwitcher_v8.exe
 
-      - name: 自动创建 Release 发布
+      - name: 发布到 Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
