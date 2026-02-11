@@ -11,10 +11,13 @@ jobs:
           python-version: '3.10'
       - name: Install dependencies
         run: pip install keyboard pyautogui pyinstaller
-      - name: Build EXE
-        run: pyinstaller --onefile --windowed --uac-admin tab.py
+         - name: Build EXE
+        # 增加 -n 参数，强制生成 barcode_switch.exe
+        run: pyinstaller --onefile --windowed --uac-admin -n barcode_switch tab.py
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: BarcodeTool
+          # 这里保持不变
           path: dist/barcode_switch.exe
