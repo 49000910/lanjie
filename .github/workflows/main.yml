@@ -1,10 +1,10 @@
-name: 打包快切助手 v18.0 (硬件隔离版)
+name: 打包快切助手 v22 (硬件列表版)
 
 on:
   push:
     tags:
-      - 'v*'
-  workflow_dispatch:
+      - 'v*' # 推送 v1.0, v2.0 等标签时触发
+  workflow_dispatch: # 支持手动点击 Actions 按钮触发
 
 jobs:
   build:
@@ -18,24 +18,41 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'pip'
 
       - name: 安装依赖
         run: |
           python -m pip install --upgrade pip
-          pip install keyboard pywin32 pyautogui pyinstaller
+          pip install -r requirements.txt
+          pip install pyinstaller pypiwin32
 
-      - name: 执行 PyInstaller 打包
+      - name: 初始化 PyWin32
         run: |
-          # --uac-admin: 必须包含！否则无法拦截 USB 硬件信号
-          # --collect-all win32gui: 解决 win32gui 模块丢失问题
+          python [python -c "import os, sys; print(os.path.join(sys.prefix, 'Scripts', 'pywin32_postinstall.py'))"] -install
+        continue-on-error: true
+
+      - name: 使用 PyInstaller 打包
+        run: |
+          # --uac-admin: 必须！读取 USB 硬件列表需要管理员权限
+          # --collect-all hid: 确保 hidapi 的 DLL 驱动被打包进去
           pyinstaller --noconsole --onefile --uac-admin `
           --collect-all win32gui `
+          --collect-all hid `
+          --hidden-import="hid" `
           --hidden-import="win32gui" `
           --hidden-import="win32con" `
-          --name "BarcodeSwitcher_v18" tab.py
+          --name "CD220_Switcher_v22" tab.py
 
-      - name: 上传产物
+      - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: BarcodeSwitcher-EXE
-          path: dist/BarcodeSwitcher_v18.exe
+          path: dist/CD220_Switcher_v22.exe
+
+      - name: 发布到 Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/CD220_Switcher_v22.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
