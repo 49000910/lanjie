@@ -11,7 +11,7 @@ import pyautogui
 class BarcodeSwitchUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("快切助手 v17.0")
+        self.root.title("快切助手 v17.2")
         self.root.geometry("320x520")
         self.root.attributes("-topmost", True)
         self.root.configure(bg="#f4f4f4")
@@ -78,7 +78,6 @@ class BarcodeSwitchUI:
         hwnd = getattr(self, 'last_detected_hwnd', None)
         if hwnd and hwnd != self.root.winfo_id():
             title = win32gui.GetWindowText(hwnd)[:12]
-            status_text = f"已锁定: {title}..."
             if target == "A": 
                 self.hwnd_a = hwnd
                 self.btn_pick_a.config(text=f"A: {title}...", bg="#e8f5e9")
@@ -106,43 +105,44 @@ class BarcodeSwitchUI:
 
             # 2. 结算点：回车
             if event.name == 'enter':
-                barcode = "".join(self.key_buffer).lower().strip()
+                # 保持原始大小写
+                barcode = "".join(self.key_buffer).strip()
                 self.key_buffer = []
                 
+                # 指令匹配时不区分大小写
                 target_cmds = [c.strip().lower() for c in self.ent_code.get().split(',')]
                 
-                if barcode in target_cmds:
+                if barcode.lower() in target_cmds:
                     self.switch_logic()
                     return False # 吞掉指令回车
                 elif barcode:
-                    # 关键：普通条码执行回吐逻辑
+                    # 普通条码：执行回吐逻辑
                     self.release_and_write(barcode, append_enter=True)
                     return False 
                 return True
 
-            # 3. 拦截字符
+            # 3. 拦截字符 (保留原始大小写)
             if len(event.name) == 1:
                 self.key_buffer.append(event.name)
                 return False 
         return True
 
     def flush_buffer(self):
-        """将由于误判拦截的字符重新吐回系统"""
         remaining = "".join(self.key_buffer)
         self.key_buffer = []
         if remaining:
             self.release_and_write(remaining, append_enter=False)
 
     def release_and_write(self, content, append_enter=False):
-        """补发/回吐逻辑"""
         def run():
             keyboard.unhook_all()
             time.sleep(0.02)
             if content:
-                keyboard.write(content, delay=0.005)
+                # 模拟输入，保持大小写
+                keyboard.write(content, delay=0.002)
             if append_enter:
                 keyboard.press_and_release('enter')
-            # 恢复现场
+            # 恢复挂钩
             keyboard.hook(self.handle_scan, suppress=True)
             keyboard.add_hotkey('f9', self.toggle_service)
         threading.Thread(target=run, daemon=True).start()
