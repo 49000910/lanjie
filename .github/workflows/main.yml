@@ -1,4 +1,4 @@
-name: 打包快切助手 EXE (修复 win32gui 报错)
+name: 打包快切助手 EXE (修复版)
 
 on:
   push:
@@ -22,40 +22,23 @@ jobs:
       - name: 安装依赖
         run: |
           python -m pip install --upgrade pip
-          # 优先安装 requirements.txt 中的库
           pip install -r requirements.txt
-          # 额外补充打包工具和 pywin32 补丁
-          pip install pyinstaller pypiwin32
-
-      - name: 执行 PyWin32 注册脚本 (关键步骤)
-        run: |
-          # 强制将 pywin32 的 DLL 注册到当前系统环境，否则打包出来的 EXE 会找不到 win32gui
-          python [python -c "import os, sys; print(os.path.join(sys.prefix, 'Scripts', 'pywin32_postinstall.py'))"] -install
-        continue-on-error: true
+          pip install pyinstaller
 
       - name: 执行 PyInstaller 打包
         run: |
-          # --collect-all: 强制收集所有关联 DLL
-          # --hidden-import: 手动补齐 win32 核心组件
+          # 使用 --collect-submodules 替代复杂的路径脚本
+          # 直接指定隐藏导入，避开路径识别问题
           pyinstaller --noconsole --onefile --uac-admin `
-          --collect-all win32gui `
-          --collect-all win32api `
           --hidden-import="win32gui" `
           --hidden-import="win32con" `
           --hidden-import="win32api" `
-          --hidden-import="win32timezone" `
+          --collect-all win32gui `
+          --collect-all pywin32 `
           --name "BarcodeSwitcher_v8" tab.py
 
-      - name: 上传打包好的 EXE
+      - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: BarcodeSwitcher-Fixed
+          name: BarcodeSwitcher-Release
           path: dist/BarcodeSwitcher_v8.exe
-
-      - name: 自动发布 Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
-        with:
-          files: dist/BarcodeSwitcher_v8.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
