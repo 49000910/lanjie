@@ -1,0 +1,28 @@
+name: Build Barcode Tool
+on: [push]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        # 修正：你代码中使用了 pynput，必须安装；pyautogui 在你的最新版代码中未提及可移除
+        run: |
+          pip install pynput keyboard pyinstaller
+          
+      - name: Build EXE
+        # 修正：增加 -n barcode_switch 参数，使输出文件名与下一步的 path 对应
+        run: pyinstaller --onefile --windowed --uac-admin -n barcode_switch tab.py
+        
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BarcodeTool
+          # 现在的路径已经正确了
+          path: dist/barcode_switch.exe
