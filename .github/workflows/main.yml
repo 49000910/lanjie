@@ -1,4 +1,4 @@
-name: 打包快切助手 v18.5 (修复权限与准星)
+name: 打包快切助手 v18.0 (硬件隔离版)
 
 on:
   push:
@@ -26,24 +26,16 @@ jobs:
 
       - name: 执行 PyInstaller 打包
         run: |
-          # --uac-admin: 关键！让生成的 EXE 自动请求管理员权限，否则无法获取高权限窗口句柄
-          # --collect-all: 确保 win32gui 等系统库完整打包
+          # --uac-admin: 必须包含！否则无法拦截 USB 硬件信号
+          # --collect-all win32gui: 解决 win32gui 模块丢失问题
           pyinstaller --noconsole --onefile --uac-admin `
           --collect-all win32gui `
           --hidden-import="win32gui" `
           --hidden-import="win32con" `
-          --name "BarcodeSwitcher_Admin" tab.py
+          --name "BarcodeSwitcher_v18" tab.py
 
-      - name: 上传构建产物
+      - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
           name: BarcodeSwitcher-EXE
-          path: dist/BarcodeSwitcher_Admin.exe
-
-      - name: 发布 Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
-        with:
-          files: dist/BarcodeSwitcher_Admin.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          path: dist/BarcodeSwitcher_v18.exe
