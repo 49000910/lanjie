@@ -1,15 +1,15 @@
-import keyboard
 import time
 import threading
 import tkinter as tk
-from tkinter import messagebox
-import sys
+from tkinter import messagebox, ttk
 import win32gui
 import win32con
 import pyautogui
+import keyboard
+import hid  # 需安裝: pip install hidapi
 import ctypes
 
-# 解决高分屏准星偏移与权限
+# 解決高分屏準星偏移，確保座標精準
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
 except:
@@ -18,65 +18,76 @@ except:
 class BarcodeSwitchUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("快切助手 v20.0 (NLS-CD220 适配版)")
-        self.root.geometry("320x550")
+        self.root.title("新大陸 CD220 硬件鎖定版 v22.0")
+        self.root.geometry("350x560")
         self.root.attributes("-topmost", True)
         self.root.configure(bg="#f4f4f4")
         
         self.hwnd_a = None
         self.hwnd_b = None
         self.is_running = False
-        self.scanner_identified = False
-        self.target_scan_codes = set() # 锁定 NLS-CD220 的物理按键特征
         self.key_buffer = []
+        self.devices_dict = {}
 
-        # --- UI 布局 ---
-        tk.Label(root, text="第一步：识别 NLS-CD220", bg="#f4f4f4", font=("微软雅黑", 9, "bold")).pack(pady=(15,0))
-        self.btn_hw = tk.Button(root, text="点击后请扫码识别", command=self.identify_scanner, bg="#fff9c4", height=2)
-        self.btn_hw.pack(pady=5, fill="x", padx=40)
+        # --- 1. USB 設備選擇區 ---
+        tk.Label(root, text="🔌 選擇掃描槍 (NLS-CD220):", bg="#f4f4f4", font=("微软雅黑", 9, "bold")).pack(pady=(15,0))
+        self.device_combo = ttk.Combobox(root, width=40, state="readonly")
+        self.device_combo.pack(pady=5)
+        
+        self.btn_refresh = tk.Button(root, text="🔄 刷新設備列表", command=self.refresh_usb_list, font=("微软雅黑", 8))
+        self.btn_refresh.pack(pady=2)
 
-        tk.Label(root, text="第二步：设置指令 (123):", bg="#f4f4f4").pack(pady=(10,0))
+        # --- 2. 切換指令 ---
+        tk.Label(root, text="⌨️ 切換指令 (如: 123):", bg="#f4f4f4").pack(pady=(10,0))
         self.ent_code = tk.Entry(root, justify='center', font=("Consolas", 12))
         self.ent_code.insert(0, "123") 
         self.ent_code.pack(pady=5)
 
-        # 窗口绑定 (v17.2 稳定版准星逻辑)
+        # --- 3. 窗口定位 (使用您確認有效的 v17.2 邏輯) ---
         self.btn_pick_a = tk.Button(root, text="🎯 准星拖动到窗口 A", bg="#ffffff", height=2)
-        self.btn_pick_a.pack(padx=40, pady=8, fill="x")
-        self.btn_pick_a.bind("<ButtonPress-1>", lambda e: self.start_drag("A"))
-        self.btn_pick_a.bind("<ButtonRelease-1>", lambda e: self.stop_drag("A"))
+        self.btn_pick_a.pack(padx=40, pady=5, fill="x")
+        self.btn_pick_a.bind("<ButtonPress-1>", self.start_drag_a)
+        self.btn_pick_a.bind("<ButtonRelease-1>", self.stop_drag_a)
 
         self.btn_pick_b = tk.Button(root, text="🎯 准星拖动到窗口 B", bg="#ffffff", height=2)
-        self.btn_pick_b.pack(padx=40, pady=8, fill="x")
-        self.btn_pick_b.bind("<ButtonPress-1>", lambda e: self.start_drag("B"))
-        self.btn_pick_b.bind("<ButtonRelease-1>", lambda e: self.stop_drag("B"))
+        self.btn_pick_b.pack(padx=40, pady=5, fill="x")
+        self.btn_pick_b.bind("<ButtonPress-1>", self.start_drag_b)
+        self.btn_pick_b.bind("<ButtonRelease-1>", self.stop_drag_b)
 
-        self.lbl_status = tk.Label(root, text="● 等待识别硬件", fg="orange", font=("微软雅黑", 11, "bold"), bg="#f4f4f4")
+        self.lbl_status = tk.Label(root, text="● 服務已停止", fg="red", font=("微软雅黑", 11, "bold"), bg="#f4f4f4")
         self.lbl_status.pack(pady=10)
 
-        self.btn_toggle = tk.Button(root, text="▶ 启动拦截 (F9)", command=self.toggle_service, bg="#28a745", fg="white", height=2, font=("微软雅黑", 10, "bold"))
+        self.btn_toggle = tk.Button(root, text="▶ 啟動服務 (F9)", command=self.toggle_service, bg="#28a745", fg="white", height=2, font=("微软雅黑", 10, "bold"))
         self.btn_toggle.pack(pady=5, fill="x", padx=60)
         
+        # 註冊全局開關 F9
         keyboard.add_hotkey('f9', self.toggle_service)
+        self.refresh_usb_list()
 
-    def identify_scanner(self):
-        """核心：锁定 NLS-CD220 的物理 ScanCode 池"""
-        messagebox.showinfo("提示", "点击确定后，请使用 NLS-CD220 扫一个条码")
-        self.btn_hw.config(text="侦测信号中...", bg="#bbdefb")
-        self.target_scan_codes.clear()
-        
-        def on_capture(event):
-            if event.event_type == 'down':
-                # 记录该物理设备产生的所有扫描码
-                self.target_scan_codes.add(event.scan_code)
-                if event.name == 'enter':
-                    self.scanner_identified = True
-                    keyboard.unhook(h)
-                    self.root.after(0, lambda: self.btn_hw.config(text="NLS-CD220 已锁定", bg="#c8e6c9"))
-                    self.root.after(0, lambda: self.lbl_status.config(text="● 硬件就绪", fg="blue"))
-        h = keyboard.hook(on_capture)
+    def refresh_usb_list(self):
+        """掃描所有 USB HID 設備"""
+        self.devices_dict = {}
+        display_list = []
+        try:
+            for d in hid.enumerate():
+                product = d.get('product_string') or "HID Keyboard"
+                mfg = d.get('manufacturer_string') or "Generic"
+                vid, pid = d['vendor_id'], d['product_id']
+                name = f"{mfg} - {product} ({hex(vid)}:{hex(pid)})"
+                if name not in self.devices_dict:
+                    self.devices_dict[name] = (vid, pid)
+                    display_list.append(name)
+            self.device_combo['values'] = display_list
+            if display_list: self.device_combo.current(0)
+            else: self.device_combo.set("未檢測到 USB 設備")
+        except: pass
 
-    # --- 准星逻辑 (v17.2 稳定版) ---
+    # --- 准星定位邏輯 ---
+    def start_drag_a(self, event): self.start_drag("A")
+    def start_drag_b(self, event): self.start_drag("B")
+    def stop_drag_a(self, event): self.stop_drag("A")
+    def stop_drag_b(self, event): self.stop_drag("B")
+
     def start_drag(self, target):
         self.root.config(cursor="crosshair")
         self.is_dragging = True
@@ -103,30 +114,24 @@ class BarcodeSwitchUI:
                 self.hwnd_b = hwnd
                 self.btn_pick_b.config(text=f"B: {title}...", bg="#e8f5e9")
 
-    # --- 核心拦截与跳转 ---
+    # --- 攔截與回吐邏輯 ---
     def handle_scan(self, event):
         if not self.is_running: return True
-        # 物理隔离：只处理识别到的 NLS-CD220 产生的按键
-        if event.scan_code not in self.target_scan_codes:
-            return True 
-
         if event.event_type == 'down':
             if event.name == 'enter':
                 barcode = "".join(self.key_buffer).strip().lower()
                 self.key_buffer = []
                 target_cmd = self.ent_code.get().lower().strip()
-                
                 if barcode == target_cmd:
                     self.switch_logic()
-                    return False # 强力拦截 NLS-CD220 的回车
+                    return False
                 elif barcode:
                     self.replay_keys(barcode)
                     return False
                 return True
-
             if len(event.name) == 1:
                 self.key_buffer.append(event.name)
-                return False
+                return False 
         return True
 
     def replay_keys(self, content):
@@ -152,22 +157,19 @@ class BarcodeSwitchUI:
 
     def toggle_service(self):
         if not self.is_running:
-            if not self.scanner_identified:
-                messagebox.showwarning("提示", "请先识别 NLS-CD220 扫码枪")
-                return
             if not self.hwnd_a or not self.hwnd_b:
-                messagebox.showwarning("提示", "请先使用准星绑定 A/B 窗口")
+                messagebox.showwarning("提示", "請先綁定窗口")
                 return
             self.is_running = True
             keyboard.hook(self.handle_scan, suppress=True)
-            self.lbl_status.config(text="● 拦截运行中", fg="#28a745")
-            self.btn_toggle.config(text="■ 停止拦截 (F9)", bg="#dc3545")
+            self.lbl_status.config(text="● 服務運行中", fg="#28a745")
+            self.btn_toggle.config(text="■ 停止服務 (F9)", bg="#dc3545")
         else:
             self.is_running = False
             keyboard.unhook_all()
             self.key_buffer = []
-            self.lbl_status.config(text="● 服务已停止", fg="red")
-            self.btn_toggle.config(text="▶ 启动拦截 (F9)", bg="#28a745")
+            self.lbl_status.config(text="● 服務已停止", fg="red")
+            self.btn_toggle.config(text="▶ 啟動服務 (F9)", bg="#28a745")
 
 if __name__ == "__main__":
     root = tk.Tk()
