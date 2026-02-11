@@ -5,16 +5,25 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+
       - name: Install dependencies
+        # 确保安装了代码中用到的所有库
         run: pip install keyboard pyautogui pyinstaller
+
       - name: Build EXE
-        run: pyinstaller --onefile --windowed --uac-admin barcode_switch.py
+        # 1. 直接指定根目录的 tab.py
+        # 2. --uac-admin 确保管理员权限（拦截键盘必备）
+        # 3. --name barcode_switch 强制将 tab.py 生成的文件重命名，以匹配下一步的路径
+        run: pyinstaller --onefile --uac-admin --clean --name barcode_switch tab.py
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: BarcodeTool
-          path: dist/tab.exe
+          # 这里的 barcode_switch.exe 必须和上面 --name 指定的名称一致
+          path: dist/barcode_switch.exe
